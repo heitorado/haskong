@@ -13,6 +13,10 @@ import System.IO
 -- Game Structure
 type Radius = Float
 type Position = (Float, Float)
+type P1SCORE = MVar Int
+type P2SCORE = MVar Int
+type RELOAD = MVar Bool
+type GameControl = (P1SCORE, P2SCORE, RELOAD)
 data Direction = UP | DOWN | NEUTRAL deriving(Show, Eq)
 data Difficulty = EASY | MEDIUM | HARD | NIGHTMARE | AREUCRAZYMAN deriving(Show, Eq)
 data WhichPlayer = P1 | P2 | NEITHER deriving(Show, Eq)
@@ -71,8 +75,8 @@ paddleW = 10
 paddleH :: Float
 paddleH = 80
 -- Render game scene
-render :: GameState -> IO Picture
-render game = do
+render :: (GameState, GameControl) -> IO Picture
+render (game, control) = do
     return(allObjects)
     where
         allObjects = Pictures[  ball,
@@ -154,9 +158,17 @@ getAIspeed game = aiLevel
         currentDifficultyLevel = aiDifficultyLevel game
 
 -- Update Method
-update :: Float -> GameState -> IO GameState
-update seconds = do
-    updateScore . paddleBounce . wallBounce . moveP1Paddle . moveP2Paddle . moveBall seconds
+update :: Float -> (GameState, GameControl) -> IO (GameState, GameControl)
+update seconds (gs, gc)= do
+    return((newGameState, gc))
+    where
+        newGameState = afterUpdateScore
+        afterUpdateScore = updateScore afterPaddleBounce
+        afterPaddleBounce = paddleBounce afterWallBounce
+        afterWallBounce = wallBounce afterMoveP1Paddle
+        afterMoveP1Paddle = moveP1Paddle afterMoveP2Paddle
+        afterMoveP2Paddle = moveP2Paddle afterMoveBall
+        afterMoveBall = moveBall seconds gs
 
 -- Collision detection and treatment
 wallCollision :: Position -> Radius -> Bool
@@ -218,9 +230,8 @@ paddleBounce game = game { ballVeloc = (vx', vy') }
 --}
 
 -- Score Update
-updateScore :: GameState -> IO GameState
-updateScore game = do
-    return(game { score = (x', y') })
+updateScore :: GameState -> GameState
+updateScore game = game { score = (x', y') }
     where
         (x', y') = (p1Score, p2Score)
         p1Score =   if outOfBounds (ballCoord game) == P2
@@ -239,38 +250,38 @@ outOfBounds (x, _)
 
 
 -- User input handling
-handleKeys :: Event -> GameState -> IO GameState
-handleKeys (EventKey (Char 'r') _ _ _) game = do
-    return(game {ballCoord = (0,0)})
-handleKeys (EventKey (Char 'w') Down _ _) game = do
-    return(game {player1Dir = UP})
-handleKeys (EventKey (Char 's') Down _ _) game = do
-    return(game {player1Dir = DOWN})
-handleKeys (EventKey (Char 'w') Up _ _) game = do
-    return(game {player1Dir = NEUTRAL})
-handleKeys (EventKey (Char 's') Up _ _) game = do
-    return(game {player1Dir = NEUTRAL})
-handleKeys (EventKey (Char '1') _ _ _) game = do
-    return(game {aiDifficultyLevel = EASY})
-handleKeys (EventKey (Char '2') _ _ _) game = do
-    return(game {aiDifficultyLevel = MEDIUM})
-handleKeys (EventKey (Char '3') _ _ _) game = do
-    return(game {aiDifficultyLevel = HARD})
-handleKeys (EventKey (Char '4') _ _ _) game = do
-    return(game {aiDifficultyLevel = NIGHTMARE})
-handleKeys (EventKey (Char '5') _ _ _) game = do
-    return(game {aiDifficultyLevel = AREUCRAZYMAN})
-handleKeys _ game = do
-    return(game)
+handleKeys :: Event -> (GameState, GameControl) -> IO (GameState, GameControl)
+handleKeys (EventKey (Char 'r') _ _ _) (game, control) = do
+    return( (game {ballCoord = (0,0)}, control) )
+handleKeys (EventKey (Char 'w') Down _ _) (game, control) = do
+    return( (game {player1Dir = UP}, control) )
+handleKeys (EventKey (Char 's') Down _ _) (game, control) = do
+    return( (game {player1Dir = DOWN}, control) )
+handleKeys (EventKey (Char 'w') Up _ _) (game, control) = do
+    return( (game {player1Dir = NEUTRAL}, control) )
+handleKeys (EventKey (Char 's') Up _ _) (game, control) = do
+    return( (game {player1Dir = NEUTRAL}, control) )
+handleKeys (EventKey (Char '1') _ _ _) (game, control) = do
+    return( (game {aiDifficultyLevel = EASY}, control) )
+handleKeys (EventKey (Char '2') _ _ _) (game, control) = do
+    return( (game {aiDifficultyLevel = MEDIUM}, control) )
+handleKeys (EventKey (Char '3') _ _ _) (game, control) = do
+    return( (game {aiDifficultyLevel = HARD}, control) )
+handleKeys (EventKey (Char '4') _ _ _) (game, control) = do
+    return( (game {aiDifficultyLevel = NIGHTMARE}, control) )
+handleKeys (EventKey (Char '5') _ _ _) (game, control) = do
+    return( (game {aiDifficultyLevel = AREUCRAZYMAN}, control) )
+handleKeys _ (game, control) = do
+    return( (game, control) )
 
 -- Main event loop
 main :: IO ()
 main = do 
-    --p1Score <- newMVar 0
-    --p2Score <- newMVar 0
-    --reloadBall <- newMVar 1
+    p1Score <- newMVar 0
+    p2Score <- newMVar 0
+    reloadBall <- newMVar False
     --forkIO(scoreBoard p1Score p2Score)
-    playIO window background fps initialState render handleKeys update
+    playIO window background fps (initialState, (p1Score, p2Score, reloadBall)) render handleKeys update
 
 -- Scoreboard Thread - responsible for keeping the score updated and creating scoreboard graphics
 {-
