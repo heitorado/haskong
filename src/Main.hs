@@ -15,8 +15,8 @@ type Radius = Float
 type Position = (Float, Float)
 type P1SCORE = MVar Int
 type P2SCORE = MVar Int
-type RELOAD = MVar Bool
-type GameControl = (P1SCORE, P2SCORE, RELOAD)
+type PICSARRAY = MVar Picture
+type GameControl = (P1SCORE, P2SCORE, PICSARRAY)
 data Direction = UP | DOWN | NEUTRAL deriving(Show, Eq)
 data Difficulty = EASY | MEDIUM | HARD | NIGHTMARE | AREUCRAZYMAN deriving(Show, Eq)
 data WhichPlayer = P1 | P2 | NEITHER deriving(Show, Eq)
@@ -76,15 +76,14 @@ paddleH :: Float
 paddleH = 80
 -- Render game scene
 render :: (GameState, GameControl) -> IO Picture
-render (game, control) = do
-    return(allObjects)
+render (game, (_,_,infos)) = do
+    additionalScreenInfo <- readMVar infos
+    return( Pictures[allObjects, additionalScreenInfo])
     where
         allObjects = Pictures[  ball,
                                 borders,
                                 makePaddle white 300 $ player1H game,
-                                makePaddle white (-300) $ player2H game,
-                                makeScore 260 200 (fst(score game)),
-                                makeScore (-260) 200 (snd(score game))
+                                makePaddle white (-300) $ player2H game
                             ]
         ball = uncurry translate (ballCoord game) $ color ballColor $ circleSolid ballRadius
         ballColor = white
@@ -95,8 +94,7 @@ render (game, control) = do
         makePaddle c x y = Pictures [   translate x y $ color c $ rectangleSolid paddleW paddleH,
                                         translate x y $ color c $ rectangleSolid paddleW paddleH]
         
-        makeScore :: Float -> Float -> Int -> Picture
-        makeScore x y s = translate x y $ scale 0.25 0.25 $ color white $ text(show s)
+
 
 -- Game Update
 moveBall :: Float -> GameState -> GameState
@@ -151,19 +149,18 @@ getAIspeed game = aiLevel
                     else if currentDifficultyLevel == MEDIUM
                     then 1.5
                     else if currentDifficultyLevel == HARD
-                    then 2
+                    then 2.25
                     else if currentDifficultyLevel == NIGHTMARE
-                    then 2.5
-                    else 5
+                    then 3.75
+                    else 6
         currentDifficultyLevel = aiDifficultyLevel game
 
 -- Update Method
 update :: Float -> (GameState, GameControl) -> IO (GameState, GameControl)
 update seconds (gs, gc)= do
-    return((newGameState, gc))
+    updateScore(newGameState, gc)
     where
-        newGameState = afterUpdateScore
-        afterUpdateScore = updateScore afterPaddleBounce
+        newGameState = afterPaddleBounce
         afterPaddleBounce = paddleBounce afterWallBounce
         afterWallBounce = wallBounce afterMoveP1Paddle
         afterMoveP1Paddle = moveP1Paddle afterMoveP2Paddle
@@ -230,17 +227,30 @@ paddleBounce game = game { ballVeloc = (vx', vy') }
 --}
 
 -- Score Update
-updateScore :: GameState -> GameState
-updateScore game = game { score = (x', y') }
+updateScore :: (GameState, GameControl) -> IO (GameState, GameControl)
+updateScore (game, (p1s, p2s, fieldPics) ) = do
+    score1 <- takeMVar p1s
+    score2 <- takeMVar p2s
+    
+    if p1Scored
+    then putMVar p1s (score1+1)
+    else putMVar p1s score1
+
+    if p2Scored
+    then putMVar p2s (score2+1)
+    else putMVar p2s score2
+    
+    return( (game { ballCoord = (a, b) }, (p1s, p2s, fieldPics)) )
     where
-        (x', y') = (p1Score, p2Score)
-        p1Score =   if outOfBounds (ballCoord game) == P2
-                    then currentP1Score+1
-                    else currentP1Score
-        p2Score =   if outOfBounds (ballCoord game) == P1
-                    then currentP2Score+1
-                    else currentP2Score 
-        (currentP1Score, currentP2Score) = score game  
+        (a, b) =    if (outOfBounds (ballCoord game) == P2) || (outOfBounds (ballCoord game) == P1)
+                    then (0,0)
+                    else ballCoord game
+        p1Scored =  if outOfBounds (ballCoord game) == P2
+                    then True
+                    else False
+        p2Scored =  if outOfBounds (ballCoord game) == P1
+                    then True
+                    else False   
 
 outOfBounds :: Position -> WhichPlayer
 outOfBounds (x, _)
@@ -280,8 +290,9 @@ main = do
     p1Score <- newMVar 0
     p2Score <- newMVar 0
     reloadBall <- newMVar False
-    --forkIO(scoreBoard p1Score p2Score)
-    playIO window background fps (initialState, (p1Score, p2Score, reloadBall)) render handleKeys update
+    infos <- newMVar middleFieldStrip
+    forkIO(scoreBoard (p1Score, p2Score, infos))
+    playIO window background fps (initialState, (p1Score, p2Score, infos)) render handleKeys update
 
 -- Scoreboard Thread - responsible for keeping the score updated and creating scoreboard graphics
 {-
@@ -289,7 +300,42 @@ scoreBoard :: MVar Int -> MVar Int -> IO Pictures
 scoreBoard mvp1 mvp2 = do
     s1 <- takeMVar mvp1
     s2 <- takeMvar mvp2
--}    
+-}
+
+middleFieldStrip :: Picture
+middleFieldStrip = color white $ rectangleSolid 3 40
+
+scoreBoard :: GameControl -> IO()
+scoreBoard (p1s, p2s, infos) = do
+    scoreP1 <- takeMVar p1s
+    scoreP2 <- takeMVar p2s
+    screenInfos <- takeMVar infos
+    
+    if(scoreP1 > 7 || scoreP2 > 7)
+    then putMVar p1s 0
+    else putMVar p1s scoreP1
+
+    if(scoreP2 > 7 || scoreP1 > 7)
+    then putMVar p2s 0
+    else putMVar p2s scoreP2
+
+    updP1Score <- readMVar p1s
+    updP2Score <- readMVar p2s
+
+    putMVar infos (generateNewImage screenInfos updP1Score updP2Score)
+    scoreBoard (p1s, p2s, infos)
+    where
+        generateNewImage :: Picture -> Int -> Int -> Picture
+        generateNewImage pic p1s p2s = fullPicture
+            where
+                fullPicture = Pictures[
+                                        makeScore 260 200 p1s,
+                                        makeScore (-260) 200 p2s,
+                                        middleFieldStrip
+                                        ]
+
+                makeScore :: Float -> Float -> Int -> Picture
+                makeScore x y s = translate x y $ scale 0.25 0.25 $ color white $ text(show s)
 
 
 {- OLD AI MANUAL CONTROLS - USE IN CASE OF ROBOT INSURGENCY
