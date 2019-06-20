@@ -106,7 +106,7 @@ moveBall seconds game = game { ballCoord = (x', y'), ballVeloc = (vx', vy')}
         (vx, vy) = ballVeloc game
         x' = x + vx * seconds
         y' = y + vy * seconds
-        (vx', vy') = if resetVelocity game
+        (vx', vy') = if not(resetVelocity game)
                      then (vx * 1.0008, vy * 1.0001)
                      else (-100, 100)
 
@@ -308,7 +308,15 @@ scoreBoard mvp1 mvp2 = do
 -}
 
 middleFieldStrip :: Picture
-middleFieldStrip = color white $ rectangleSolid 3 40
+middleFieldStrip = Pictures[
+                            translate 0 180 $ color white $ rectangleSolid 3 40,
+                            translate 0 120 $ color white $ rectangleSolid 3 40,
+                            translate 0 60 $ color white $ rectangleSolid 3 40,   
+                            color white $ rectangleSolid 3 40,
+                            translate 0 (-60) $ color white $ rectangleSolid 3 40,
+                            translate 0 (-120) $ color white $ rectangleSolid 3 40,
+                            translate 0 (-180) $ color white $ rectangleSolid 3 40
+                        ]
 
 scoreBoard :: GameControl -> IO()
 scoreBoard (p1s, p2s, infos) = do
@@ -328,6 +336,10 @@ scoreBoard (p1s, p2s, infos) = do
     updP2Score <- readMVar p2s
 
     putMVar infos (generateNewImage screenInfos updP1Score updP2Score)
+
+    -- Dorme por 600ms (reduz Lag causado pela thread do placar)
+    threadDelay 600000
+
     scoreBoard (p1s, p2s, infos)
     where
         generateNewImage :: Picture -> Int -> Int -> Picture
