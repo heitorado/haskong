@@ -28,7 +28,8 @@ data GameState = Game{
     player1Dir :: Direction,
     player2Dir :: Direction,
     aiDifficultyLevel :: Difficulty,
-    score :: (Int, Int)
+    score :: (Int, Int),
+    resetVelocity :: Bool
 } deriving Show
 
 initialState :: GameState
@@ -40,7 +41,8 @@ initialState = Game{
     player1Dir = NEUTRAL,
     player2Dir = NEUTRAL,
     aiDifficultyLevel = EASY,
-    score = (0,0)
+    score = (0,0),
+    resetVelocity = False
 }
 
 -- Game Screen Parameters
@@ -104,8 +106,10 @@ moveBall seconds game = game { ballCoord = (x', y'), ballVeloc = (vx', vy')}
         (vx, vy) = ballVeloc game
         x' = x + vx * seconds
         y' = y + vy * seconds
-        vx' = vx * 1.001
-        vy' = vy * 1.001
+        (vx', vy') = if resetVelocity game
+                     then (vx * 1.0008, vy * 1.0001)
+                     else (-100, 100)
+
 
 moveP1Paddle :: GameState -> GameState
 moveP1Paddle game = game { player1H = h}
@@ -240,9 +244,9 @@ updateScore (game, (p1s, p2s, fieldPics) ) = do
     then putMVar p2s (score2+1)
     else putMVar p2s score2
     
-    return( (game { ballCoord = (a, b) }, (p1s, p2s, fieldPics)) )
+    return( (game { ballCoord = (a, b), resetVelocity = someoneScored}, (p1s, p2s, fieldPics)) )
     where
-        (a, b) =    if (outOfBounds (ballCoord game) == P2) || (outOfBounds (ballCoord game) == P1)
+        (a, b) =    if someoneScored
                     then (0,0)
                     else ballCoord game
         p1Scored =  if outOfBounds (ballCoord game) == P2
@@ -250,7 +254,8 @@ updateScore (game, (p1s, p2s, fieldPics) ) = do
                     else False
         p2Scored =  if outOfBounds (ballCoord game) == P1
                     then True
-                    else False   
+                    else False
+        someoneScored = p1Scored || p2Scored
 
 outOfBounds :: Position -> WhichPlayer
 outOfBounds (x, _)
