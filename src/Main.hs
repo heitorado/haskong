@@ -15,8 +15,8 @@ type Radius = Float
 type Position = (Float, Float)
 type P1SCORE = MVar Int
 type P2SCORE = MVar Int
-type PICSARRAY = MVar Picture
-type GameControl = (P1SCORE, P2SCORE, PICSARRAY)
+type PICS = MVar Picture
+type GameControl = (P1SCORE, P2SCORE, PICS)
 data Direction = UP | DOWN | NEUTRAL deriving(Show, Eq)
 data Difficulty = EASY | MEDIUM | HARD | NIGHTMARE | AREUCRAZYMAN deriving(Show, Eq)
 data WhichPlayer = P1 | P2 | NEITHER deriving(Show, Eq)
@@ -95,7 +95,6 @@ render (game, (_,_,infos)) = do
         makePaddle :: Color -> Float -> Float -> Picture
         makePaddle c x y = Pictures [   translate x y $ color c $ rectangleSolid paddleW paddleH,
                                         translate x y $ color c $ rectangleSolid paddleW paddleH]
-        
 
 
 -- Game Update
@@ -121,21 +120,8 @@ moveP1Paddle game = game { player1H = h}
             else currentHeight
         currentHeight = player1H game
         currentMovement = player1Dir game
-{--
-moveP2Paddle :: GameState -> GameState
-moveP2Paddle game = game { player2H = h}
-    where
-        h = if(currentMovement == UP)
-            then currentHeight + 5
-            else if(currentMovement == DOWN)
-            then currentHeight - 5
-            else currentHeight
-        currentHeight = player2H game
-        currentMovement = player2Dir game
 
---}
-
--- AI TEST
+-- AI
 moveP2Paddle :: GameState -> GameState
 moveP2Paddle game = game { player2H = h}
     where
@@ -204,31 +190,6 @@ paddleBounce game = game { ballVeloc = (vx', vy) }
                     -vx
                 else
                     vx
-
-{-- MORE DYNAMIC PADDLEBOUNCE TEST - IT IS TURNING THE BALL INTO A MAYBE GHOST
-paddleBounce :: GameState -> GameState
-paddleBounce game = game { ballVeloc = (vx', vy') }
-    where
-        radius = ballRadius
-        (x, y) = ballCoord game
-        (vx, vy) = ballVeloc game
-        (vx', vy') =    if (paddleCollision (ballCoord game) radius (player1H game) (player2H game)) && x > 0 
-                        then ( (modifierP1 * (-150) * cos(phiP1)) , (modifierP1 * 150 * sin(phiP1)) )
-                        else if paddleCollision (ballCoord game) radius (player1H game) (player2H game)
-                        then ( (modifierP2 * (150) * cos(phiP2)) , (modifierP2 * 150 * sin(phiP2)) )
-                        else
-                            (vx, vy)
-        phiP1 =  (0.25 * pi * (2*n1 -1)) * pi/180
-        n1 = (y + ballRadius - ((player1H game)+paddleH/2))/(paddleH + 2 * ballRadius)
-        phiP2 = (0.25 * pi * (2*n2 -1)) * pi/180
-        n2 = (y + ballRadius - ((player2H game)+paddleH/2))/(paddleH + 2 * ballRadius)
-        modifierP1 =if(abs(phiP1) > 0.2*pi)
-                    then 1.5
-                    else 1
-        modifierP2 =if(abs(phiP2) > 0.2*pi)
-                    then 1.5
-                    else 1
---}
 
 -- Score Update
 updateScore :: (GameState, GameControl) -> IO (GameState, GameControl)
@@ -299,14 +260,6 @@ main = do
     forkIO(scoreBoard (p1Score, p2Score, infos))
     playIO window background fps (initialState, (p1Score, p2Score, infos)) render handleKeys update
 
--- Scoreboard Thread - responsible for keeping the score updated and creating scoreboard graphics
-{-
-scoreBoard :: MVar Int -> MVar Int -> IO Pictures
-scoreBoard mvp1 mvp2 = do
-    s1 <- takeMVar mvp1
-    s2 <- takeMvar mvp2
--}
-
 middleFieldStrip :: Picture
 middleFieldStrip = Pictures[
                             translate 0 180 $ color white $ rectangleSolid 3 40,
@@ -353,11 +306,3 @@ scoreBoard (p1s, p2s, infos) = do
 
                 makeScore :: Float -> Float -> Int -> Picture
                 makeScore x y s = translate x y $ scale 0.25 0.25 $ color white $ text(show s)
-
-
-{- OLD AI MANUAL CONTROLS - USE IN CASE OF ROBOT INSURGENCY
-handleKeys (EventKey (Char 'o') Down _ _) game = game {player2Dir = UP}
-handleKeys (EventKey (Char 'l') Down _ _) game = game {player2Dir = DOWN}
-handleKeys (EventKey (Char 'o') Up _ _) game = game {player2Dir = NEUTRAL}
-handleKeys (EventKey (Char 'l') Up _ _) game = game {player2Dir = NEUTRAL}
--}
